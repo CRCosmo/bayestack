@@ -8,6 +8,7 @@ import os,sys,numpy
 # Which program is loading this settings file?
 exe=sys.argv[0]
 context='cmdline'
+num = sys.argv[1]
 if    'reconstruct' in exe: context='r'
 elif  'simulate'    in exe: context='s'
 elif  'lumfunc'     in exe: context='l'
@@ -21,8 +22,8 @@ print 'Context is %s' % context
 
 # Master parameters
 MOTD=''
-RESUME=False # Turn checkpointing on
-nb= 40#40#38#40#39#37#41#50#39#37 #13 #24 #27 #34 #37  # 38 or 41
+RESUME=False # Turn checkpointing on 
+nb=21 #22#25#55#40#38#40#39#37#41#50#39#37 #13 #24 #27 #34 #37  # 38 or 41
 outdir='chains_150414a' # based on 140123a
 run_num=outdir.split('_')[-1]
 if context=='s' or context=='i': outdir='sims/%s' % outdir.split('_')[-1]
@@ -30,34 +31,103 @@ logfile='README.txt'
 variablesfile='variables.txt'
 comment='Run portability tests'
 
-# What to fit - SPL, TPL, XPL or QPL
-nlaws=4
-
-dataset='sdss'
+dataset='cosmos'
 run_num_run='150414a'
-
+dataf = 'cos_s%s.txt'%num
+print dataf
+#dataf = 'skads_s1_3_noisy.el'
+#dataf = 'dr12s_f4.txt'
+num =3
 # Specify the data file (within outdir) and set up some survey parameters
 if dataset=='sdss':
-    datafile='sdss_dr12s2.txt'
-    SURVEY_AREA=14555 # sq. deg.
-    SURVEY_NOISE=150.0 # uJy
+	#if len(dataf)==15: #vol
+	print len(dataf)
+	#if len(dataf)==15: # 12  16
+	#	num = dataf[-9]# vol
+		#num = dataf[-5]# -5  -9
+	#	print num
+	#else:
+	#	num = dataf[-6:-4]
+	if int(num) > 7:
+		SURVEY_AREA=8609.67 # sq. deg.
+	else:
+		SURVEY_AREA=6672 # dr7 sq. deg.
+    
+	datafile='sdss_dr12s%s.txt'%(num)
+	SURVEY_NOISE=150.0 # uJy
+if dataset=='skads': #skads	
+	if len(dataf)==17: #skads
+		num = dataf[7]# vol
+	else:
+		num = dataf[7:9]
+	
+	print num,len(dataf)
+	print 'noting happend!'
+	#sys.exit()
+	SURVEY_AREA=16.
+	datafile='data_cos_s%s.txt'%(num)
+	SURVEY_NOISE=3.0 # uJy
+	#dataset='sdss'
+
+if dataset=='cosmos':
+	if len(dataf)==10: 
+		num = dataf[5]
+	else:
+		num = dataf[5:7]
+	
+	print num,len(dataf)
+	print 'noting happend!'
+	#sys.exit()
+	SURVEY_AREA=1.38
+	datafile='data_cos_s%s.txt'%(num)
+	SURVEY_NOISE=2.4 # uJy
+	#dataset='sdss'
 
 #-------------------------------------------------------------------------------
+def get_bins(flux_min, flux_max, z, Lbinwidth=0.4, Lmin=20):
+        dl = get_dl(z)
+        Lmax = numpy.log10(get_Lbins([flux_max],z,dl)[0])
+        Lbins = numpy.arange(Lmin,round(Lmax+1), Lbinwidth)
+        positive_sbins = get_sbins(10**Lbins,z,dl)*1e6
+        n = numpy.where(positive_sbins > abs(flux_min))[0][0] +1
+        #negative_sbins = 0 - positive_sbins[abs(flux_min) >=positive_sbins]
+        negative_sbins =numpy.sort( 0 - positive_sbins[:n])
+        sbins = numpy.concatenate([negative_sbins,positive_sbins])
+        return sbins
+
 
 # Parameters for binning a catalogue
 if context=='b':
     BIN_CAT_CLIP=None
     CORR_RESOLUTION=None
     CORR_BINS=None
-    BOUT_HISTO=os.path.join(dataset,'flux_histo_%s.pdf'%('2'))
+    BOUT_HISTO=os.path.join(dataset,'flux_histo_%s.pdf'%(num))
     if 'sdss' in dataset:
-        BIN_CAT_FORM=6
+        BIN_CAT_FORM=3 #9 #3
         BIN_CAT_CLIP=None # ? Cut on something
         CORR_BINS=numpy.ones(nb)
-        BIN_COL=3 # - pixel flux
-        BIN_CAT=os.path.join(dataset,'dr12_s1.txt')
+        BIN_COL=-1 # - pixel flux
+        BIN_CAT=os.path.join(dataset,dataf)
         CORR_RESOLUTION=1.0
-        BOUT_CAT=os.path.join(dataset,'sdss_dr12s1.txt')
+        BOUT_CAT=os.path.join(dataset,datafile)
+        
+    elif 'skads' in dataset:
+        BIN_CAT_FORM=9 #9 #3
+        BIN_CAT_CLIP=None # ? Cut on something
+        CORR_BINS=numpy.ones(nb)
+        BIN_COL=2 # - pixel flux
+        BIN_CAT=os.path.join('cos_data',dataf)
+        CORR_RESOLUTION=1.0
+        BOUT_CAT=os.path.join('cos_data',datafile)
+        
+    elif 'cosmos' in dataset:
+        BIN_CAT_FORM=9 #9 #3
+        BIN_CAT_CLIP=None # ? Cut on something
+        CORR_BINS=numpy.ones(nb)
+        BIN_COL=-1 # - pixel flux
+        BIN_CAT=os.path.join('cos_data',dataf)
+        CORR_RESOLUTION=1.0
+        BOUT_CAT=os.path.join('cos_data',datafile)
         
 #-------------------------------------------------------------------------------
 
@@ -66,15 +136,22 @@ binstyle='sdss'
 
 if binstyle=='sdss':
     #bins=numpy.linspace(-1000.0,1000.0,41)
-    bins=[ -700., -340,  -295,  -251,  -206,\
-      	-161. ,-138., -116., -93. ,-71., -48.,\
-      	-26. ,  -4. ,18., 40.,   63., 85.,  108.,\
-      	 130,  153, 175,  197., 219 , 242., 264.,\
-         287., 309,  332., 354., 377., 422., 467.,\
-         512., 557., 646.,736.,   826.,  1006.,\
-         1140. , 1320.,  1500.]        
-    bins=numpy.array(bins)
+    #old bin style
+
+    bins =[ -3.65833012e+01,\
+        -1.45640745e+01,  -5.79806251e+00,  -2.30825026e+00,\
+        -3.65833012e-01,   3.65833012e-01,   9.18930980e-01,\
+         2.30825026e+00,   5.79806251e+00,   1.45640745e+01,\
+         3.65833012e+01,   9.18930980e+01,   2.30825026e+02,\
+         5.79806251e+02,   1.45640745e+03,   3.65833012e+03,\
+         9.18930980e+03,   2.30825026e+04,   5.79806251e+04,\
+         1.45640745e+05,   3.65833012e+05,   9.18930980e+05]
+         
+    print 'I want the length'
+    print len(bins)-1,nb
+    nb = len(bins) -1
     assert(len(bins)-1==nb)
+    print bins
 
 nbins=len(bins)
 dbins=numpy.gradient(bins)
@@ -84,4 +161,3 @@ dbins=numpy.gradient(bins)
 print 'MOTD: %s' % MOTD
 
 #-------------------------------------------------------------------------------
-
