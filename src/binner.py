@@ -57,14 +57,14 @@ def main():
         CORR_BINS=numpy.ones(len(bins)-1)
 
     print 'Reading from %s' % BIN_CAT
-    cat=numpy.atleast_2d(numpy.genfromtxt(BIN_CAT))
+    cat=numpy.genfromtxt(BIN_CAT)
 
     # Convert unit if required
     if BIN_CAT_FORM in [0,2,3]:
-        cat[:,BIN_COL] *= 1000.0 # mJy -> uJy in SURVEY_AREA sq. deg.
+        cat[:,BIN_COL] *= 1e6#1000.0 # mJy -> uJy in SURVEY_AREA sq. deg.
         # 5 sigma:
         #cat=cat[numpy.where((cat[:,BIN_COL]/cat[:,BIN_COL+1])>0.0)]
-    elif BIN_CAT_FORM in [6,8,10]:
+    elif BIN_CAT_FORM in [6,8]:
         cat[:,BIN_COL] *= Jy2muJy
     else:
         pass
@@ -87,25 +87,30 @@ def main():
 
     idl_s=False
     countUtils.writeCountsFile(BOUT_CAT,bins,cat[:,BIN_COL],SURVEY_AREA,\
-                               idl_style=idl_s,verbose=True,corrs=CORR_BINS)
+                               idl_style=idl_s,verbose=True,corrs=CORR_BINS,redshift=cat[:,2])
 
     if True:
         # Now plot a histogram of fluxes to file, with fine binning
+        zbins =[0.2, 0.45, 0.7, 1.0, 1.3, 1.6, 1.85, 2.15, 2.35, 2.55, 2.85, 3.15, 3.5]
+        z_min = zbins[int(num) -1]
+        z_max = zbins[int(num)]
         print 'Flux range/uJy = %f -> %f' % (cat[:,BIN_COL].min(),cat[:,BIN_COL].max())
         fig = plt.figure()
-        binwidth=0.1*SURVEY_NOISE
-        n,b,p=plt.hist(cat[:,BIN_COL], bins=numpy.arange(bins[0],(20.0*SURVEY_NOISE)+binwidth,binwidth),histtype='step',color='black')
+        binwidth=0.2*SURVEY_NOISE
+        b=plt.hist(cat[:,BIN_COL], bins=numpy.arange(bins[0],(20.0*SURVEY_NOISE)+binwidth,binwidth),histtype='step',color='black')[1]
+        n = len(cat)
         plt.yscale('log')
         plt.xlim(bins[0],20.0*SURVEY_NOISE)
-        plt.ylim(0.5,1.0e3)
-        plt.xlabel('S/$\mu$Jy')
-        plt.ylabel('Number of objects')
-        y = numpy.max(n)*gaussian(b,0.0,SURVEY_NOISE,norm=False)
+        plt.ylim(0.5,3.0e3)
+        plt.xlabel('S/$\mu$Jy',fontsize=18)
+        plt.ylabel('Number of objects',fontsize=18)
+        y = 0.06*numpy.max(n)*gaussian(b,80.0,SURVEY_NOISE,norm=False)
         plt.plot(b,y,'r--',linewidth=1)
-        plt.axvline(1.0*SURVEY_NOISE,color='b',alpha=0.2)
-        plt.axvline(5.0*SURVEY_NOISE,color='b',alpha=0.2)
-        #plt.text(SURVEY_NOISE,0.16,'1 sigma',rotation=90,color='b',alpha=0.5)
-        #plt.text(5.0*SURVEY_NOISE,0.16,'5 sigma',rotation=90,color='b',alpha=0.5)
+        plt.axvline(1.0*SURVEY_NOISE,color='g',alpha=0.2)
+        plt.axvline(5.0*SURVEY_NOISE,color='g',alpha=0.2)
+        plt.text(SURVEY_NOISE,1e3,'$ \sigma$',rotation=90,color='b',alpha=0.5,fontsize=18)
+        plt.text(5.0*SURVEY_NOISE,1e3,'$5 \sigma$',rotation=90,color='b',alpha=0.5,fontsize=18)
+        plt.text(1.5e3,1e3,'%.2f < z < %.2f\n N = %d'%(z_min,z_max,len(cat)),alpha=0.5,fontsize=18 )
         #plt.title('')
         plt.savefig(BOUT_HISTO)
         print '-> Look in %s' % BOUT_HISTO
@@ -118,4 +123,3 @@ if __name__ == '__main__':
 
     ret=main()
     sys.exit(ret)
-
