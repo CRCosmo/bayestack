@@ -4,11 +4,10 @@ Also includes some useful constants
 """
 
 import os,sys
-import shelve
 import numpy
 import scipy
-from scipy import stats
-from scipy.interpolate import interp1d
+from scipy import integrate, stats
+from scipy.interpolate import interp1d,spline  
 from scipy import ndimage
 from profile_support import profile
 import pymultinest
@@ -103,31 +102,7 @@ def strictly_increasing(L):
 #-------------------------------------------------------------------------------
 
 @profile
-def calculateReducedChisq(D,M,Sigma,ndof=1):
-
-    """
-    """
-    return numpy.power((D-M)/Sigma,2).sum() / float(ndof)
-
-#-------------------------------------------------------------------------------
-
-@profile
-def poissonLhoodMulti3(dataDict,realisationDict,silent=True):
-    loglike=0.0
-    for df in dataDict.keys():
-        data=dataDict[df]; realisation=realisationDict[df]
-        kk=data[numpy.where(realisation > 0)];
-        iii=realisation[numpy.where(realisation > 0)]
-        loglike += (kk*numpy.log(iii) + kk - kk*numpy.log(kk) - iii).sum()
-        if not silent:
-            for i in range(len(data)):
-                print i,data[i],realisation[i]
-    return loglike
-
-#-------------------------------------------------------------------------------
-
-@profile
-def poissonLhoodMulti2(dataObject,realisationObject,silent=True):
+def poissonLhoodMulti2(dataObject,realisationObject,silent=False):
     #print dataObject.zsliceData
     #print realisationObject
     loglike=0.0
@@ -138,7 +113,7 @@ def poissonLhoodMulti2(dataObject,realisationObject,silent=True):
         realisation=realisationObject[z]
         if not silent:
             for i in range(len(data)):
-                print i,data[i],realisation[i]
+                print 'i, data, realisation ', i,data[i],realisation[i]
         kk=data[numpy.where(realisation > 0)];
         iii=realisation[numpy.where(realisation > 0)]
         loglike += (kk*numpy.log(iii) + kk - kk*numpy.log(kk) - iii).sum()
@@ -385,23 +360,23 @@ def peak_confidence(vector,bins=None):
 #-------------------------------------------------------------------------------
 
 @profile
-def calculate_confidence2(vector,value_central=None,alpha=0.68,ret_all=True,\
+def calculate_confidence2(vector,value_central=None,alpha=0.68,ret_all=False,\
                           truncate_edges=False):
     """
     For a given central value (could be median),
     return error bars (optionally) corrected to avoid touching the edges
     value_central is the median unless otherwise supplied (e.g. ymap[ibin])
     """
-    k='strict'
+
     if value_central is None:
         percentile_central=50.0 # median
         value_central=stats.scoreatpercentile(vector,percentile_central)
     else:
-        percentile_central=stats.percentileofscore(vector,value_central,kind=k)
+        percentile_central=stats.percentileofscore(vector,value_central)
 
-    pcl=percentile_low=percentile_central-(100.0*alpha/2.0)
-    pch=percentile_high=percentile_central+(100.0*alpha/2.0)
-
+    percentile_low=percentile_central-(100.0*alpha/2.0)
+    percentile_high=percentile_central+(100.0*alpha/2.0)
+    #print 'yyy',percentile_central,percentile_low,percentile_high
     # Correct the confidence region to avoid touching the edges
     if truncate_edges:
         if percentile_high > 100.0:
@@ -412,8 +387,9 @@ def calculate_confidence2(vector,value_central=None,alpha=0.68,ret_all=True,\
             dpc_low=0.0-percentile_low
             percentile_low=0.0
             percentile_high += dpc_low
-    #print 'www',pcl,percentile_low,pch,percentile_high,percentile_central,value_central
-
+    #print 'xxx',percentile_central,percentile_low,percentile_high
+    #print 'zzz',stats.scoreatpercentile(vector,percentile_low),\
+    #stats.scoreatpercentile(vector,percentile_central),stats.scoreatpercentile(vector,percentile_high)
     #assert ((percentile_high <= 100.0) and (percentile_low >= 0.0)), '***cannot compute.... %f %f'%(percentile_low,percentile_high)
 
     err_low  = value_central - stats.scoreatpercentile(vector,percentile_low)
@@ -688,40 +664,96 @@ def remarks(fHandle,notes,verbose=True):
 
 #-------------------------------------------------------------------------------
 
+def myRelativeEvidences(globList):
+    """
+    A more useful version of reportRelativeEvidences
+    """
+
+    print '\n-> Comparing runs %s' % (', '.join(globList))
+    #Hdict={}; Zdict={};dZdict={}
+    Hdict=[]; Zdict=[]; dZdict=[]
+    for run in globList:
+        statsf='%s/1-'%run
+        nparams=numpy.genfromtxt('%spost_equal_weights.dat'%statsf).shape[-1]-1
+        ana=pymultinest.analyse.Analyzer(nparams,outputfiles_basename=statsf).get_stats()
+        Z=ana['global evidence']; dZ=ana['global evidence error']
+        Hdict.append(run);Zdict.append(Z); dZdict.append(dZ)
+
+    #Identify H0
+    #Zmin=min(Hdict.keys())
+    #Zmax=max(Hdict.keys())
+    print 'this is the first key',Zdict[3]
+    #sH0=Hdict[Zmin]; Hmax=Hdict[Zmax]
+    print
+    #print 'H0   = %s (Z=%f)' % (H0,Zmin)
+    #print 'Hmax = %s (Z=%f)' % (Hmax,Zmax)
+    print
+
+    print '# H_i Z dZ DeltaZ dDeltaZ verdict'    
+    for run in range(len(globList)):
+        DeltaZ=Zdict[run]-Zdict[3]
+        if run==3:
+            dDeltaZ=0.0
+        else:
+            dDeltaZ=numpy.sqrt(dZdict[run]**2+dZdict[3]**2)
+        if run==3:
+            result='<-*- H0'
+        #elif run==Hmax:
+         #   result='<-*- winner'
+        else:
+            result=' '
+        print '%s: Z = %f +/- %6.4f | %6.4f +/- %6.4f %s' \
+          % (run,Zdict[run],dZdict[run],DeltaZ,dDeltaZ,result)
+    print
+
+    print "% ...and here's the LaTeX:"
+    print '$H_i$ & $\Delta\log_{\mathrm{e}}Z$ \\\\ % run'    
+    for irun,run in enumerate(globList):
+        DeltaZ=Zdict[irun]-Zdict[3]
+        if irun==3:
+            dDeltaZ=0.0
+        else:
+            dDeltaZ=numpy.sqrt(dZdict[irun]**2+dZdict[3]**2)
+        print '%6.4f %6.4f'%(DeltaZ,dDeltaZ),
+        #print '%i & $%6.4f \pm %6.4f$ \\\\ %% %s' \
+        #  % (irun+1,DeltaZ,dDeltaZ,run)
+    print
+    print '#% Happy now..?\n'
+
+    #for run in globList:
+    #    if run==H0:continue
+    #    reportRelativeEvidence(H0=H0,H1=run,verbose=True)
+
+    return DeltaZ,dDeltaZ
+
+
 def reportRelativeEvidences(globList):
     """
     A more useful version of reportRelativeEvidences
     """
 
     print '\n-> Comparing runs %s' % (', '.join(globList))
-    Hdict={}; Zdict={};dZdict={}#; shelvesDict={}
+    Hdict={}; Zdict={};dZdict={}
     for run in globList:
         statsf='%s/1-'%run
         nparams=numpy.genfromtxt('%spost_equal_weights.dat'%statsf).shape[-1]-1
         ana=pymultinest.analyse.Analyzer(nparams,outputfiles_basename=statsf).get_stats()
         Z=ana['global evidence']; dZ=ana['global evidence error']
         Hdict[Z]=run; Zdict[run]=Z; dZdict[run]=dZ
-        #try:
-        #    shelvesDict=restoreShelf('%s/shelves.txt'%run)
-        #except:
-        #    print 'No shelves found'
 
     #Identify H0
     Zmin=min(Hdict.keys())
     Zmax=max(Hdict.keys())
+    print 'this is the first key',list(Hdict.keys())[0]
     H0=Hdict[Zmin]; Hmax=Hdict[Zmax]
     print
     print 'H0   = %s (Z=%f)' % (H0,Zmin)
     print 'Hmax = %s (Z=%f)' % (Hmax,Zmax)
     print
 
-    print '# H_i Z dZ DeltaZ dDeltaZ null verdict'    
+    print '# H_i Z dZ DeltaZ dDeltaZ verdict'    
     for run in globList:
         DeltaZ=Zdict[run]-Zdict[H0]
-        if False:#shelvesDict[run]['doRayleigh']:
-            Ry='R'
-        else:
-            Ry=''
         if run==H0:
             dDeltaZ=0.0
         else:
@@ -732,8 +764,8 @@ def reportRelativeEvidences(globList):
             result='<-*- winner'
         else:
             result=' '
-        print '%s: Z = %f +/- %6.4f | %6.4f +/- %6.4f %s %s' \
-          % (run,Zdict[run],dZdict[run],DeltaZ,dDeltaZ,Ry,result)
+        print '%s: Z = %f +/- %6.4f | %6.4f +/- %6.4f %s' \
+          % (run,Zdict[run],dZdict[run],DeltaZ,dDeltaZ,result)
     print
 
     print "% ...and here's the LaTeX:"
@@ -753,9 +785,9 @@ def reportRelativeEvidences(globList):
     #    if run==H0:continue
     #    reportRelativeEvidence(H0=H0,H1=run,verbose=True)
 
-    return
+    return DeltaZ,dDeltaZ
         
-#-------------------------------------------------------------------------------
+#------------------------- ------------------------------------------------------
 
 def reportRelativeEvidence(H0=None,H1=None,verbose=True):
     """
@@ -868,15 +900,39 @@ def printLaTeX(parameters,statsDict,dump=None):
 #-------------------------------------------------------------------------------
 
 @profile
-def restoreShelf(shelvef):
-    """
-    http://stackoverflow.com/questions/2960864/how-can-i-save-all-the-variables-in-the-current-python-session
-    """
-    my_shelf = shelve.open(filename)
-    shelvesDict={}
-    for key in my_shelf:
-        shelvesDict[key]=my_shelf[key]
-    my_shelf.close()
-    return shelvesDict
+def reflectediagonally(array,n):
+    '''
+    Reflect a python nxn grid on it's diagonal taken from
+    '''
+    for i in range(n):
+        for j in range(i+1,n):
+            array[i,j],array[j,i] = array[j,i],array[i,j]
+        
+    return array
 
-#-------------------------------------------------------------------------------
+@profile
+def get_changed_multiplot(n,m,num):
+    '''
+    This changes the LF plot from going left to right and top to down
+    to going top down and left right
+    '''
+    n_best=max(n,m)
+    a=numpy.zeros((n_best,n_best))
+    l=1
+
+    for i in range(len(a)):
+        for j in range(len(a[0])):
+         a[i,j]=l
+         l+=1
+    
+    if n==m:
+        new_a=reflectediagonally(a,len(a))
+    elif n<m:
+        print 'I dont know how to deal with this presently'
+        sys.exit()
+        d=n-m
+        new_a=relfectediagonally(a[:d],)
+    else:
+        new_a=relfectediagonally(a[:,:d],len(a))
+    flat_a=new_a.flat
+    return int(flat_a[num-1])
