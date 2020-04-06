@@ -22,7 +22,7 @@ from utils import *
 import contour_plot
 from bayestackClasses import countModel
 
-param_file=sys.argv[-1].rstrip('\\')
+param_file=sys.argv[-1]
 setf='%s.bayestack_settings' % param_file
 #param_dir=sys.argv[-1]
 #param_file='settings.py'
@@ -61,51 +61,155 @@ def main():
     expt=countModel(modelFamily,nlaws,setf,dataset,floatNoise)
     # Insert hacks here
     #plotRanges['C']=[0,200]
-    #labelDict=dict((name,name) for name in expt.parameters)
+    print modelFamily
+    if modelFamily=='LFsch':
+    	labelDict= {'noise': '$\sigma$','LMIN':'$L_{min}$','LMAX':'$L_{max}$',\
+    				'LNORM':'$\Phi_*$','LSTAR': '$L_*$','LSLOPE':r'$\alpha$'}#,'LZEVOL':'$Z_{evol}$'}
+    
+    elif modelFamily=='LFpl':
+        print 'this..'
+    	labelDict= {'LMIN':'$L_{min}$','LMAX':'$L_{max}$',\
+    				'LNORM_2':'$\Phi_*$','LSTAR_2': '$L_*$','LSLOPE_2':r'$\alpha_1$','LSLOPE2_2':r'$\alpha_1$'}
+    	
+    elif modelFamily=='LFdpl':
+        print 'this..'
+    	labelDict= {'LMIN':'$L_{min}$','LMAX':'$L_{max}$',\
+    				'LNORM_2':'$\Phi_*$','LSTAR_2': '$L_*$','LSLOPE_2':r'$\alpha_1$','LSLOPE2_2':r'$\alpha_2$','LZEVOL':'$Z_{evol}$'}
+    elif modelFamily=='LFlognorm':
+        labelDict= {'noise': '$\sigma$','LMIN':'$L_{min}$','LMAX':'$L_{max}$',\
+                                'LNORM_2':'$\Phi_*$','LSTAR_2': '$L_*$','LSLOPE_2':r'$\alpha_1$','LSIGMA':r'$\sigma$','LZEVOL':'$Z_{evol}$'}
+                                
+    elif modelFamily=='LFlognorm_dpl':
+        print 'this is the right model'
+        labelDict= {'LMIN':'$L_{min}$','LMAX2':'$L_{max2}$','LMIN2':'$L_{min2}$','LMAX':'$L_{max}$',\
+                    'LNORM':'$\Phi_*$','LSTAR': '$L_*$','LSLOPE':r'$\alpha_1$',\
+                    'LSLOPE2': r'$\alpha_2$', 'LNORM_2':'$\Phi2_*$','LSTAR_2': '$L2_*$','LSLOPE_2':r'$\alpha_2$','LSIGMA':r'$\sigma$'}
+        print labelDict
+    elif modelFamily=='LFpl_lognorm':
+        print 'this is the right model'
+        labelDict= {'LMIN':'$L_{min}$','LMAX2':'$L_{max2}$','LMIN2':'$L_{min2}$','LMAX':'$L_{max}$',\
+                    'LNORM':'$\Phi_*$','LSTAR': '$L_*$','LSLOPE':r'$\alpha_1$',\
+                    'LNORM_2':'$\Phi2_*$','LSTAR_2': '$L2_*$','LSLOPE_2':r'$\alpha_2$','LSIGMA':r'$\sigma$'}
+        print labelDict
+    
+    elif modelFamily=='LFdpl_pl':
+        labelDict= {'noise': '$\sigma$','LMIN':'$L_{min}$','LMAX2':'$L_{max2}$','LMIN2':'$L_{min2}$','LMAX':'$L_{max}$',\
+                    'LNORM':'$\Phi_*$','LSTAR': '$L_*$','LSLOPE':r'$\alpha_1$',\
+                    'LSLOPE2': r'$\alpha_2$', 'LNORM_2':'$\Phi2_*$','LSTAR_2': '$L2_*$','LSLOPE_2':r'$\beta_1$','LSLOPE2_2':r'$\beta_2$'}
+    elif modelFamily=='LFpl_dpl':
+        labelDict= {'noise': '$\sigma$','LMIN':'$L_{min}$','LMAX2':'$L_{max2}$','LMIN2':'$L_{min2}$','LMAX':'$L_{max}$',\
+                    'LNORM':'$\Phi_*$','LSTAR': '$L_*$','LSLOPE':r'$\alpha_1$',\
+                    'LSLOPE2': r'$\alpha_2$', 'LNORM_2':'$\Phi2_*$','LSTAR_2': '$L2_*$','LSLOPE_2':r'$\beta_1$','LSLOPE2_2':r'$\beta_2$'}                    
+    #elif modelFamily=='LFlognorm_dpl':
+     #   labelDict= {'noise': '$\sigma$','LMIN':'$L_{min}$','LMAX':'$L_{max}$',\
+      #              'LNORM':'$\Phi_*$','LSTAR': '$L_*$','LSLOPE':r'$\alpha_1$',\
+       #             'LSLOPE2': r'$\alpha_2$', 'LNORM_2':'$\Phi2_*$','LSTAR_2': '$L2_*$','LSLOPE_2':r'$\alpha_2$','LSIGMA':r'$\sigma$'}
+    elif modelFamily=='LFdpl_dpl':
+        labelDict= {'noise': '$\sigma$','LMIN':'$L_{min}$','LMAX2':'$L_{max2}$','LMIN2':'$L_{min2}$','LMAX':'$L_{max}$',\
+                    'LNORM':'$\Phi_*$','LSTAR': '$L_*$','LSLOPE':r'$\alpha_1$','LSLOPE2': r'$\alpha_2$', 'LNORM_2':'$\Phi2_*$',\
+                    'LSTAR_2': '$L2_*$','LSLOPE_2':r'$\beta_1$','LSLOPE2_2':r'$\beta_2$'}   
+    
+    elif modelFamily=='LFdpl_dpl_z':
+        labelDict= {'noise': '$\sigma$','LMIN':'$L_{min}$','LMAX2':'$L_{max2}$','LMIN2':'$L_{min2}$','LMAX':'$L_{max}$',\
+                    'LNORM':'$\Phi_*$','LSTAR': '$L_*$','LSLOPE':r'$\alpha_1$','LSLOPE2': r'$\alpha_2$', 'LNORM_2':'$\Phi2_*$',\
+                    'LSTAR_2': '$L2_*$','LSLOPE_2':r'$\beta_1$','LSLOPE2_2':r'$\beta_2$', 'A_SF':r'$\alpha_{SF}$', 'A_agn':r'$\alpha_{AGN}$',\
+                    'B_SF':r'$\beta_{SF}$', 'B_agn':r'$\beta_{AGN}$'}
+    elif modelFamily=='LFevol':
+        labelDict= {'noise': '$\sigma$','LMIN':'$L_{min}$','LMAX':'$L_{max}$','A_SF':r'$\alpha_{SF}$', 'A_agn':r'$\alpha_{AGN}$',\
+                    'B_SF':r'$\beta_{SF}$', 'B_agn':r'$\beta_{AGN}$'}
+    elif modelFamily=='LFevol_dpl':
+        labelDict= {'noise': '$\sigma$','LMIN':'$S_{min} (\mu Jy)$','LMAX':'$L_{max}$','A_SF':r'$\alpha_{SF}$', 'A_agn':r'$\alpha_{AGN}$',\
+                    'B_SF':r'$\beta_{SF}$', 'B_agn':r'$\beta_{AGN}$'}
+    elif modelFamily=='LFevol_logn':
+        labelDict= {'noise': '$\sigma$','LMIN':'$S_{min} (\mu Jy)$','LMAX':'$L_{max}$','A_SF':r'$\alpha_{SF}$', 'A_agn':r'$\alpha_{AGN}$',\
+                    'B_SF':r'$\beta_{SF}$', 'B_agn':r'$\beta_{AGN}$'}
+    elif modelFamily=='LFevol_dpl_s':
+        labelDict= {'noise': '$\sigma$','LMIN':'$S_{min} (\mu Jy)$','LMAX':'$L_{max}$','A_SF':r'$\alpha_{SF}$','B_SF':r'$\beta_{SF}$'}
+        
+    elif modelFamily=='LFevol_logn_s':
+        labelDict= {'noise': '$\sigma$','LMIN':'$S_{min} (\mu Jy)$','LMAX':'$L_{max}$','A_SF':r'$\alpha_{SF}$','B_SF':r'$\beta_{SF}$'}
+    elif modelFamily=='LFevol_logn_mat':
+        labelDict= {'noise': '$\sigma$','LMIN':'$L_{min}$','LMAX':'$L_{max}$','A_agn':r'$L_{agn}$','A_SF':r'$\L_{SF}$'}
+        
+    elif modelFamily=='LFevol_logn_L':
+        labelDict= {'noise': '$\sigma$','LMIN':'$L_{min}$','LMAX':'$L_{max}$','A_SF':r'$\alpha_{SF}$', 'A_agn':r'$\alpha_{AGN}$',\
+                    'B_SF':r'$\beta_{SF}$', 'B_agn':r'$\beta_{AGN}$', 'LMIN_1':'$L_{min1}$', 'LMIN_2':'$L_{min2}$' ,'LMIN_3':'$L_{min3}$' ,'LMIN_4':'$L_{min4}$' ,'LMIN_5':'$L_{min5}$' ,'LMIN_6':'$L_{min6}$' ,'LMIN_7':'$L_{min7}$' ,'LMIN_8':'$L_{min8}$' ,'LMIN_9':'$L_{min9}$'}        
+        
+    else:
+    	labelDict=dict((name,lables) for name in expt.parameters)
+    
     plotTruth=dict((name,-99.0) for name in expt.parameters)
+    if modelFamily in ['LFsch','LFdpl_pl','LFpl_dpl','LFdpl_dpl','LFdpl_dpl_z','LFlognorm_dpl']:
+        Lnorm=expt.parameters[expt.parameters.index('LNORM')]
+        Lstar=expt.parameters[expt.parameters.index('LSTAR')]
+        Lslope=expt.parameters[expt.parameters.index('LSLOPE')]
+        #Lzevol=expt.parameters[expt.parameters.index('LZEVOL')]
+    if modelFamily in ['LFdpl_dpl','LFlognorm_dpl']:
+        Lslope2=expt.parameters[expt.parameters.index('LSLOPE2')]
+    if modelFamily in ['LFlognorm','LFdpl','LFpl','LFdpl_pl','LFpl_dpl', 'LFlognorm_dpl','LFdpl_dpl','LFdpl_dpl_z']:
+        Lnorm=expt.parameters[expt.parameters.index('LNORM_2')]
+        Lstar=expt.parameters[expt.parameters.index('LSTAR_2')]
+        Lslope=expt.parameters[expt.parameters.index('LSLOPE_2')]
+    if modelFamily in ['LFdpl_dpl']:
+        Lslope2_2=expt.parameters[expt.parameters.index('LSLOPE2_2')]
+    
+    if modelFamily in ['LFdpl_dpl_z']:
+        alpha_agn=expt.parameters[expt.parameters.index('A_agn')]
+        alpha_SF=expt.parameters[expt.parameters.index('A_SF')]
+        beta_agn=expt.parameters[expt.parameters.index('B_agn')]
+        beta_SF=expt.parameters[expt.parameters.index('B_SF')]
+
+    
+    noise = expt.parameters[expt.parameters.index('noise')]
     plotRanges=dict((k,v[-2:]) for (k,v) in expt.priorsDict.items())
-
+    
+    furniture={}
+    
     # Load the data
-    chain=pylab.loadtxt('%s/1-post_equal_weights.dat'%outdir)
-
-    if doPoln and doRayleigh:
-        rayParams=['C','noise']
-        pip=[ip for ip,p in enumerate(expt.parameters) if p in rayParams]
-        expt.parameters=rayParams
-        chain=chain[:,pip]
+    chain=pylab.loadtxt('%s/1-post_equal_weights.dat'%outdir) #
+    
+    
+    print 'start'
+    #print chain[0][1:]
+    chain = numpy.array([c[1:] for c in chain])
+    print chain[0]
+    #sys.exit()
+    #chain=pylab.loadtxt('%s/1-ev.dat'%outdir) 
+    print expt.parameters,'oka'
+    print modelFamily
+    
 
     # Local plot
-    line=True
-    autoscale=False
-    title='%s - %s'%(outdir,dataset)
+    line=False
+    print labelDict
+    autoscale=True
+    print 'this is noise',noise
+    title=''#r'$\rm{%s \mu Jy}$'%noise#%s - %s'%(outdir,dataset)
+    stats=fetchStats(outdir,expt.parameters,plotTruth)
+    printLaTeX(expt.parameters,stats,dump=outdir)
     truth=plotTruth
     bundle=contour_plot.contourTri(chain,\
-                            line=line,outfile='%s/%s'%(outdir,triangle),\
-                            col=('red','blue'),labels=expt.parameters,\
+                            line=line,\
+                            labels=expt.parameters[1:],\
                             ranges=plotRanges,truth=truth,\
                             autoscale=autoscale,title=title,\
-                            labelDict=labelDict)
+                            labelDict=labelDict\
+                            ,furniture=furniture)
 
     # Plot for publication
     line=False
     autoscale=True
     title=''
-    truth=None
-    extn='pdf'
-    binsize=25
-    furniture={'TRUNCATE_C':False,'TRUNCATE_C_LIMIT':2.0e7,\
-               'C_COL':expt.parameters.index('C'),'FONTSIZE':4,\
-               'ROTATION':60.0,'FIGSIZE':(8.27,11.69), 'DPI':400,\
-               'AXIS_LABEL_OFFSET':-0.3,'LOG_BINS':[expt.parameters.index('C')],\
-               'PADDING':0.05}
+    truth= {'noise': 150,'LMIN':21.7,'LMAX':24.6,'LNORM':numpy.log10(1e-7),'LSTAR': 23.1,'LSLOPE':1.,'LSLOPE2':1.}
+    plotRanges={'noise': [148., 160],'LMIN': [0.2e22, 1.2e22],'LMAX':[1e23,1e25],'LNORM':[1e15,1e17],'LSTAR': [1e22,5e24],'LSLOPE':[0,6],'LSLOPE2':[0,6]}
+    extn='png'
     bundle=contour_plot.contourTri(chain,\
                             line=line,\
                             outfile='%s/triangle-%s-publn.%s'%(outdir,run_num,extn),\
                             labels=expt.parameters,\
                             ranges=plotRanges,truth=truth,\
                             autoscale=autoscale,title=title,\
-                            binsize=binsize,labelDict=labelDict,\
-                            furniture=furniture)
+                            binsize=50,labelDict=labelDict,furniture=furniture)
 
     stats=fetchStats(outdir,expt.parameters,plotTruth)
     printLaTeX(expt.parameters,stats,dump=outdir)
