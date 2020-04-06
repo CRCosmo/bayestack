@@ -34,10 +34,9 @@ from scipy import integrate
 from scipy.special import erf
 from priors import Priors
 import countUtils
-import polnUtils
+#import polnUtils
 import lumfuncUtils
-from utils import sqDeg2sr,beamFac,sqrtTwo,strictly_increasing,poissonLhood,\
-                      medianArray,poissonLhoodMulti,poissonLhoodMulti3
+from utils import sqDeg2sr,beamFac,sqrtTwo,strictly_increasing,poissonLhood,medianArray,poissonLhoodMulti2
 from cosmocalc import cosmocalc
 #import cosmolopy
 from collections import OrderedDict
@@ -58,19 +57,15 @@ class surveySetup(object):
         self.datafiles=datafiles
         self.SURVEY_AREAS=areas
         self.SURVEY_NOISES=noises
-        self.numNoiseZones=len(self.SURVEY_NOISES)
         if len(self.datafiles)>1:
             self.multi=True
             self.fractions=[a/sum(self.SURVEY_AREAS) for a in self.SURVEY_AREAS]
         else:
             self.multi=False
-        self.datafile=datafiles[0]
+            self.datafile=datafiles[0]
         self.SURVEY_AREA=areas[0]
         self.SURVEY_NOISE=noises[0]
         self.fractions=[1.0]
-        self.noiseZoneMap={}
-        for df in self.datafiles:
-            self.noiseZoneMap[df]=int(os.path.basename(df).split('.')[-2].split('_')[-1][-1])
 
         if whichSurvey in ['video']:# or 'sim' in whichSurvey:
             self.HALO_MASK=11436315.0/(19354.0*19354.0)
@@ -97,31 +92,44 @@ class dataSetup(object):
         self.manifest=self.manifest[[s-1 for s in whichRedshiftSlices],:]
         self.whichRedshiftSlices=whichRedshiftSlices
         if self.redshiftSlices:
-            self.datafiles=['%s/sdss_dr12s%i.txt'%(whichSurvey,r) for r in self.whichRedshiftSlices]
+#            self.datafiles=['%s/sdss_dr12s%i.txt'%(outdir,r) for r in self.whichRedshiftSlices] #(whichSurvey,r)
+            self.datafiles=['%s/data_cos_s%i.txt'%(outdir,r) for r in self.whichRedshiftSlices]
+            #self.datafiles= ['sims/161101b/sim.txt']
             self.datafile=self.datafiles[0]
             self.numRedshiftSlices=len(whichRedshiftSlices) #self.manifest.shape[0]
             self.redshifts=self.manifest[:,3]
+            self.redshifts_min = self.manifest[:,1]
+            self.redshifts_max = self.manifest[:,2]
             self.sliceAreasTemp=self.manifest[:,4]  # Needs to be rejigged
             self.sliceNoisesTemp=self.manifest[:,5] # Needs to be rejigged
-            self.zsliceData={}; self.dls={}; self.sliceAreas={}; self.sliceNoises={}
+            self.zsliceData={}; self.dls={}; self.dlds={};self.Vmax={}; self.sliceAreas={}; self.sliceNoises={}; self.fmag={}
             # Rejig z information
             for r in range(self.numRedshiftSlices):
                 z=self.redshifts[r]
+                z_min = self.redshifts_min[r]
+                z_max = self.redshifts_max[r]
                 dataf=self.datafiles[r]
                 self.zsliceData[z]=self.loadData(dataf)
-                self.dls[z]=cosmocalc(z,H0=Ho,WM=wm)['DL_Mpc']
+                self.dls[z]=cosmocalc(z,H0=Ho,WM=wm)['DCMR_Mpc']
+                self.fmag[z] = (numpy.log10(lumfuncUtils.get_Lbins(\
+                    [self.zsliceData[z][1][-1]],z,self.dls[z])[0]) - \
+                    numpy.log10(lumfuncUtils.get_Lbins([self.zsliceData[z][1][-2]],z,\
+                    self.dls[z])[0]))/0.4
+                self.dlds[z] = lumfuncUtils.get_dlds(z,self.dls[z])
+                self.Vmax[z] = lumfuncUtils.get_Vmax(z_min,z_max)
                 self.sliceAreas[z]=self.sliceAreasTemp[r]
                 self.sliceNoises[z]=self.sliceNoisesTemp[r]
-            print 'Loaded',self.datafiles
         elif self.noiseZones:
             pass
 
         return
 
     def loadData(self,datafile):
+        #print datafile
+        #sys.exit()
         dataMatrix=numpy.genfromtxt(datafile)
-        corrected_data=dataMatrix[:,3]*dataMatrix[:,8]
-        binsDogleg=numpy.concatenate((dataMatrix[:,0],[dataMatrix[-1,1]]))
+        corrected_data=dataMatrix[:,3]#*dataMatrix[:,8]
+        binsDogleg=numpy.concatenate((dataMatrix[:,2],[dataMatrix[-1,1]]))
         return corrected_data,binsDogleg
 
 
@@ -178,6 +186,7 @@ class countModel(object):
     expt=countModel(kind,order,settingsf,whichSurvey,floatNoise)
     
     """
+
     def __init__(self,kind,order,settingsf,whichSurvey,floatNoise,doPoln=False,\
                  doRayleigh=False,doRedshiftSlices=False,mybins=None):
         # Import settings
@@ -201,30 +210,61 @@ class countModel(object):
 
         # Set up parameters for this model
         # --> This defines the order of the parameters:
-        self.paramsAvail=OrderedDict([\
-                     ('extra',['noise%i'%ic for ic in xrange(numNoiseZones)]),\
+        self.paramsAvail=\
+                    OrderedDict([('extra',['noise']),\
+                     ('evol',['A_agn','A_SF','B_agn','B_SF']),\
+                     ('evol_SF',['A_SF','B_SF']),\
+                     ('evol_mat',['A_SF','A_agn']),\
                      ('breaks',['S%i'%ic for ic in xrange(self.nlaws+1)]),\
                      ('amp',['C']),\
                      ('coeffs',['p%i'%ic for ic in xrange(self.nlaws)]),\
                      ('limits',['S%i'%ic for ic in xrange(2)]),\
+                     ('Llimits',['LMIN_%i'%ic for ic in xrange(1,10)]),\
+                     ('llimits',['LMIN','LMAX']),\
                      ('poles',['b%i'%ic for ic in xrange(self.nlaws)]),\
+
                      ('slopes',['a%i'%ic for ic in xrange(self.nlaws)]),\
-                     ('schechter',['LMIN','LMAX','LNORM','LSTAR','LSLOPE','LZEVOL']),\
-                     ('doublepl',['LMIN','LMAX','LNORM','LSTAR','LSLOPE','LSLOPE2','LZEVOL']),\
+                     #('schechter',['LMIN','LMAX','LNORM','LSTAR','LSLOPE','LZEVOL']),\
+                     ('schechter',['LMIN','LMAX','LNORM','LSTAR','LSLOPE']),\
+                     #('doublepl',['LMIN','LMAX','LNORM_2','LSTAR_2','LSLOPE_2','LSLOPE2_2'),\
+                     ('powerlaw',['LMIN','LMAX','LNORM_2','LSTAR_2','LSLOPE_2']),\
+                     ('doublepl',['LMIN','LMAX','LNORM_2','LSTAR_2','LSLOPE_2','LSLOPE2_2']),\
+                     ('dpl_pl',['LMIN','LMAX2','LMIN2','LMAX','LNORM','LSTAR','LSLOPE','LSLOPE2','LNORM_2','LSTAR_2','LSLOPE_2']),\
+		     ('pl_dpl',['LMIN','LMAX2','LMIN2','LMAX','LNORM','LSTAR','LSLOPE','LSLOPE2','LNORM_2','LSTAR_2','LSLOPE_2']),\
+                     ('dpl_dpl',['LMIN','LMAX2','LMIN2','LMAX','LNORM','LSTAR','LSLOPE','LSLOPE2','LNORM_2','LSTAR_2','LSLOPE_2','LSLOPE2_2']),\
+                     ('lognorm',['LMIN','LMAX','LNORM_2','LSTAR_2','LSLOPE_2','LSIGMA']),\
+                     ('lognorm_dpl',['LMIN','LMAX2','LMIN2','LMAX','LNORM','LSTAR','LSLOPE','LSLOPE2','LNORM_2','LSTAR_2','LSLOPE_2','LSIGMA']),\
+                     ('pl_lognorm',['LMIN','LMAX2','LMIN2','LMAX','LNORM','LSTAR','LSLOPE','LNORM_2','LSTAR_2','LSLOPE_2','LSIGMA']),\
                      ('schechterM',['MMIN','MMAX','MNORM','MSTAR','MSLOPE','MZEVOL']),\
                      ('doubleplM',['MMIN','MMAX','MNORM','MSTAR','MSLOPE','MSLOPE2','MZEVOL'])])
         familyMap={'ppl':['breaks','slopes','amp','extra'],\
                    'poly':['limits','coeffs','extra'],\
                    'bins':['poles','extra'],\
                    'LFsch':['schechter','extra'],\
+		   'LFpl':['powerlaw','extra'],\
                    'LFdpl':['doublepl','extra'],\
+                   'LFdpl_dpl':['dpl_dpl','extra'],\
+                   'LFdpl_pl':['dpl_pl','extra'],\
+                   'LFdpl_dpl_z':['dpl_dpl','evol','extra'],\
+                   'LFevol' :['evol','llimits','extra'],\
+                   'LFevol_dpl' :['evol','llimits','extra'],\
+                   'LFevol_dpl_s' :['evol_SF','llimits','extra'],\
+                   'LFevol_dpl_L':['Llimits','evol','llimits','extra'],
+                   'LFevol_logn':['evol','llimits','extra'],\
+                   'LFevol_logn_mat':['evol_mat','llimits','extra'],\
+                   'LFevol_logn_s':['evol_SF','llimits','extra'],\
+                   'LFevol_logn_L':['Llimits','evol','llimits','extra'],
+		   'LFpl_dpl':['pl_dpl','extra'],\
+                   'LFlognorm_dpl':['lognorm_dpl','extra'],\
+                   'LFlognorm':['lognorm','extra'],\
+                   'LFpl_lognorm':['pl_lognorm','extra'],\
                    'HIsch':['schechterM','extra'],\
                    'HIdpl':['doubleplM','extra']}
         self.paramsStruct=\
           [self.paramsAvail[p] for p in self.paramsAvail if p in familyMap[kind]]
         self.parameters=list(itertools.chain(*self.paramsStruct))
         self.nparams=len(self.parameters)
-        print self.nparams,self.parameters
+        #print self.nparams,self.parameters
         self.currentPhysParams=-99.0*numpy.ones(self.nparams)
 
         # Set up priors
@@ -232,24 +272,32 @@ class countModel(object):
         self.priorsDict=self.parsePriors(self.parameters,self.floatNoise)
 
         # Load the data and derive the bins
-        #self.survey=surveySetup(whichSurvey,[datafiles],[SURVEY_AREA],[SURVEY_NOISE])
-        self.survey=surveySetup(whichSurvey,datafiles,SURVEY_AREAS,SURVEY_NOISES)
-        if not self.survey.multi:
-            self.data,self.bins=self.loadData(self.survey.datafile)
-            #print self.data,self.survey.datafile
+        self.survey=surveySetup(whichSurvey,[datafiles],[SURVEY_AREA],[SURVEY_NOISE])
+        if doRedshiftSlices:
+        # And load any multiple data sets
+            self.fdata={}; self.fbins={}; self.fnbins={}; self.fbinsMedian={}
+            for df in self.survey.datafiles[0]:
+                self.fdata[df],self.fbins[df]=self.loadData(df)
+                #print df
+                #print self.fdata[df]
+                #print self.fbins[df]
+                
+                self.fnbins[df]=len(self.fbins[df])-1
+                self.fbinsMedian[df]=medianArray(self.fbins[df])
+                
+            self.binsMedian= self.fbinsMedian[df]
+            self.bins = self.fbins[df]
+            self.data = self.fdata[df]
+            self.nbins=self.fnbins[df]
+        else:
+            print self.survey.datafile
+            self.data,self.bins=self.loadData(self.survey.datafile[0])
+            print 'different?',self.data,self.survey.datafile
             self.nbins=len(self.bins)-1
             self.binsMedian=medianArray(self.bins)
             self.nsrc=int(self.data.sum())
-        # And load any multiple data sets
-        else:
-            self.fdata={}; self.fbins={}; self.fnbins={}; self.fbinsMedian={}
-            for df in self.survey.datafiles:
-                self.fdata[df],self.fbins[df]=self.loadData(df)
-                self.fnbins[df]=len(self.fbins[df])-1
-                self.fbinsMedian[df]=medianArray(self.fbins[df])
-                self.data=self.fdata[df]
-                self.bins=self.fbins[df]
-            self.nsrc=int(sum([i.sum() for i in self.fdata.values()]))
+            
+            
         if mybins is not None:
             self.bins=mybins
             self.binsMedian=medianArray(self.bins)
@@ -274,41 +322,42 @@ class countModel(object):
                 elif p.startswith('a'): priorsDict[p]=['U',SLOPE_MIN,SLOPE_MAX] # slopes
             elif self.kind=='poly':
                 if p.startswith('p'): priorsDict[p]=[POLYCOEFF_PRIOR,POLYCOEFF_MIN,POLYCOEFF_MAX] # #coeffs
-                if p=='p0': priorsDict[p]=['LOG',1.0e11,1.0e15]
-                if p=='p1': priorsDict[p]=['U',-1.0e2,1.0e2]
-                #if p=='p2': priorsDict[p]=['U',-1.0e2,1.0e2]
-                #if p=='p3': priorsDict[p]=['U',-1.0e2,1.0e2]
-                #if p=='p0': priorsDict[p]=['LOG',1.0e14,1.0e15]
-                if p=='p1': priorsDict[p]=['U',-1.0e4,0.0]
-                if p=='p2': priorsDict[p]=['U',-1.0e5,1.0e5]
-
+                #if p=='p0': priorsDict[p]=['DELTA',1.0,1.0]
             elif self.kind=='bins':
-                if p.startswith('b'):
-                    priorsDict[p]=[POLEAMPS_PRIOR,POLEAMPS_MIN,POLEAMPS_MAX] # bins/poles/nodes
+                if p.startswith('b'): priorsDict[p]=[POLEAMPS_PRIOR,POLEAMPS_MIN,POLEAMPS_MAX] # bins/poles/nodes
 
             if p.startswith('n'): # noise
-                if numNoiseZones>1:
-                    nNz=len([i for i in parameters if i.startswith('n')])
-                    for j in range(nNz):
-                        priorsDict['noise%i'%j]=\
-                          ['U',NOISES_MIN[noiseZones[j]],NOISES_MAX[noiseZones[j]]]
+                if floatNoise:
+                    priorsDict[p]=['U',NOISE_MIN,NOISE_MAX]
                 else:
-                    if floatNoise:
-                        priorsDict[p]=['U',NOISE_MIN,NOISE_MAX]
-                    else:
-                        priorsDict[p]=['DELTA',SURVEY_NOISE,SURVEY_NOISE]
-
+                    priorsDict[p]=['DELTA',SURVEY_NOISE,SURVEY_NOISE]
             elif p=='S0': priorsDict[p]=['U',SMIN_MIN,SMIN_MAX] # Smin
             elif p=='S%i'%iSmax: priorsDict[p]=['U',SMAX_MIN,SMAX_MAX] # Smax
 
             # LFs: ['LNORM','LSTAR','LSLOPE','LMIN','LMAX','LZEVOL'] + ['LSLOPE2']
             if p=='LMIN': priorsDict['LMIN']=[LMIN_PRIOR,LMIN_MIN,LMIN_MAX]
+            elif p=='LMIN2': priorsDict['LMIN2']=[LMIN2_PRIOR,LMIN2_MIN,LMIN2_MAX]
             elif p=='LMAX': priorsDict['LMAX']=[LMAX_PRIOR,LMAX_MIN,LMAX_MAX]
+            elif p=='LMAX2': priorsDict['LMAX2']=[LMAX2_PRIOR,LMAX2_MIN,LMAX2_MAX]
             elif p=='LNORM': priorsDict['LNORM']=[LNORM_PRIOR,LNORM_MIN,LNORM_MAX]
             elif p=='LSTAR': priorsDict['LSTAR']=[LSTAR_PRIOR,LSTAR_MIN,LSTAR_MAX]
             elif p=='LSLOPE': priorsDict['LSLOPE']=[LSLOPE_PRIOR,LSLOPE_MIN,LSLOPE_MAX]
             elif p=='LSLOPE2': priorsDict['LSLOPE2']=[LSLOPE2_PRIOR,LSLOPE2_MIN,LSLOPE2_MAX]
             elif p=='LZEVOL': priorsDict['LZEVOL']=[LZEVOL_PRIOR,LZEVOL_MIN,LZEVOL_MAX]
+            elif p=='LSIGMA': priorsDict['LSIGMA']=[LSIGMA_PRIOR,LSIGMA_MIN,LSIGMA_MAX]
+            elif p=='LNORM_2': priorsDict['LNORM_2']=[LNORM_2_PRIOR,LNORM_2_MIN,LNORM_2_MAX]
+            elif p=='LSTAR_2': priorsDict['LSTAR_2']=[LSTAR_2_PRIOR,LSTAR_2_MIN,LSTAR_2_MAX]
+            elif p=='LSLOPE_2': priorsDict['LSLOPE_2']=[LSLOPE_2_PRIOR,LSLOPE_2_MIN,LSLOPE_2_MAX]
+            elif p=='LSLOPE2_2': priorsDict['LSLOPE2_2']=[LSLOPE2_2_PRIOR,LSLOPE2_2_MIN,LSLOPE2_2_MAX]
+            elif p=='LSIGMA': priorsDict['LSIGMA']=[LSIGMA_PRIOR,LSIGMA_MIN,LSIGMA_MAX]
+            
+            elif p=='Nsigma_a':priorsDict['Nsigma_a']=[Nsigma_a_PRIOR,Nsigma_a_MIN,A_SF_MAX]
+            elif p=='A_SF':priorsDict['A_SF']=[A_SF_PRIOR,A_SF_MIN,A_SF_MAX]
+            elif p=='B_agn':priorsDict['B_agn']=[B_agn_PRIOR,B_agn_MIN,A_agn_MAX]
+            elif p=='B_SF':priorsDict['B_SF']=[B_SF_PRIOR,B_SF_MIN,B_SF_MAX]
+            elif p=='A_agn':priorsDict['A_agn']=[A_agn_PRIOR,A_agn_MIN,A_agn_MAX]
+
+
 
             # MFs: ['MNORM','MSTAR','MSLOPE','MMIN','MMAX','MZEVOL'] + ['MSLOPE2']
             if p=='MMIN': priorsDict['MMIN']=[MMIN_PRIOR,MMIN_MIN,MMIN_MAX]
@@ -329,8 +378,9 @@ class countModel(object):
         return self.lastPhysParams
 
     def loadData(self,datafile):
-        dataMatrix=numpy.genfromtxt(datafile)
-        corrected_data=dataMatrix[:,3]*dataMatrix[:,8]
+        dataMatrix=numpy.genfromtxt('%s'%(datafile))
+        #dataMatrix=numpy.genfromtxt('%s%s'%(outdir,datafile[8:]))
+        corrected_data=dataMatrix[:,3]#*dataMatrix[:,8]
         binsDogleg=numpy.concatenate((dataMatrix[:,0],[dataMatrix[-1,1]]))
         return corrected_data,binsDogleg
 
@@ -343,8 +393,7 @@ class countModel(object):
         if self.kind=='ppl':
             C=alpha=Smin=Smax=beta=S0=gamma=S1=delta=S2=-99.0
             paramsList=self.parameters
-            #nlaws=int(0.5*len(paramsList)-1)+2-numNoiseZones # infer nlaws from length of param vector
-            nlaws=int(0.5*(len(paramsList)-numNoiseZones-1))
+            nlaws=int(0.5*len(paramsList)-1) # infer nlaws from length of param vector
             C=params[paramsList.index('C')]
             Smin=params[paramsList.index('S0')]
             alpha=params[paramsList.index('a0')]
@@ -421,18 +470,21 @@ class countModel(object):
             evaluations=[1.0 * countUtils.polyFunc(S,S_1,Smin/1.0e6,Smax/1.0e6,\
                                              coeffs) for S in self.binsMedian/1.0e6]
 
-    	elif self.kind in ['LFsch','LFdpl']:
+    	elif self.kind in ['LFsch','LFpl','LFdpl','LFlognorm','LFdpl_pl','LFlognorm_dpl','LFpl_lognorm','LFdpl_dpl','LFpl_dpl','LFdpl_dpl_z','LFevol_dpl','LFevol_logn','LFevol_logn_mat','LFevol_dpl_s','LFevol_logn_s','LFevol_logn_L']:
     	#only works for a single fit, needs some handling to do zeval
     		n = len(sorted(self.zDataObject.zsliceData.keys()))
     		#evaluations= numpy.zeros(n)
-    		#evaluations=[]
+    		evaluations=[]
     		for r in range(n):
-    			z=self.redshifts[r]
-                zbins=self.zDataObject.zsliceData[z][1]
-                dl=self.zDataObject.dls[z]
-                evaluations = [lumfuncUtils.dNdS_LF(S, z, dl,params,\
+    		    z=self.redshifts[r]
+    		    zbins=self.zDataObject.zsliceData[z][1]
+    		    dl = self.zDataObject.dls[z]
+    		    dlds = self.zDataObject.dlds[z]
+    		    Vmax = self.zDataObject.Vmax[z]
+    		    #print z,n,r
+    		    evaluations.append([lumfuncUtils.LF(S,z,dlds,Vmax,dl,params,\
                   self.parameters,inta= None,\
-                  area=self.survey.SURVEY_AREA,family=self.kind) for S in self.binsMedian/1.0e6]
+                  area=self.survey.SURVEY_AREA,family=self.kind) for S in self.binsMedian/1.0e6])
         	
         	return evaluations
 
@@ -449,6 +501,24 @@ class countModel(object):
             return
         #print evaluations
         return evaluations
+        
+    def evaluate2(self,params):
+        n = len(sorted(self.zDataObject.zsliceData.keys()))
+            #evaluations= numpy.zeros(n)
+        evaluations=[]
+        for r in range(n):
+            z=self.redshifts[r]
+            zbins=self.zDataObject.zsliceData[z][1]
+            dl = self.zDataObject.dls[z]
+            dlds = self.zDataObject.dlds[z]
+            Vmax = self.zDataObject.Vmax[z]
+            mag  = self.zDataObject.fmag[z] 
+                #print z,n,r
+            evaluations.append([lumfuncUtils.dNdS_LF(S,z,dlds,Vmax,dl,mag,params,\
+                self.parameters,inta= None,\
+                area=self.survey.SURVEY_AREA,family=self.kind) for S in self.binsMedian/1.0e6])#dNdS_LF
+            
+            return evaluations
 
     def secondMoment(self,Slower,Supper):
         return self.momentN(Slower,Supper,2)
@@ -501,15 +571,20 @@ class countModel(object):
             self.dataRealisation=polnUtils.calculateP3(cube,self.parameters,\
                     family=self.kind,bins=self.bins,\
                     area=self.survey.SURVEY_AREA,doRayleigh=self.doRayleigh)
-        elif self.kind in ['LFsch','LFdpl']:
+        elif self.kind in ['LFsch','LFdpl','LFpl','LFdpl_pl','LFdpl_dpl','LFlognorm','LFlognorm_dpl','LFpl_lognorm','LFevol_logn','LFevol_dpl','LFevol_dpl_s','LFevol_logn_s','LFevol_logn_mat']:
             self.zRealiseObject={}
             for r in range(len(sorted(self.zDataObject.zsliceData.keys()))):
                 z=self.redshifts[r]
                 zbins=self.zDataObject.zsliceData[z][1]
                 dl=self.zDataObject.dls[z]
+                dlds = self.zDataObject.dlds[z]
+                Vmax = self.zDataObject.Vmax[z]
+                mag  = self.zDataObject.fmag[z] 
+                #print 'start II'
                 self.zRealiseObject[z]=lumfuncUtils.calculateL3(cube,self.parameters,\
                     bins=zbins,area=self.survey.SURVEY_AREA,family=self.kind,\
-                    redshift=z,dl=dl)
+                    redshift=z,dl=dl,dlds=dlds,Vmax=Vmax,mag=mag)
+
             return self.zRealiseObject
             #self.ziter=self.redshifts[0] # Need to select z somehow!!
             #self.dataRealisation=lumfuncUtils.calculateL3(cube,self.parameters,\
@@ -529,22 +604,6 @@ class countModel(object):
             #self.dataRealisation=lumfuncUtils.calculateH3(cube,self.parameters,\
             #        bins=self.bins,area=self.survey.SURVEY_AREA,family=self.kind,\
             #        redshift=self.ziter)
-        elif self.survey.multi:
-            self.frealisations={}
-#            print self.parameters
-            #c=[cube[i] for i in range(len(self.parameters))]
-            #paramsList=self.parameters
-            for df in self.survey.datafiles:
-                nn=self.survey.noiseZoneMap[df]
-                # For noise zones other than the first, fix
-                #if nn>0:
-                #    c[paramsList.index('noise')]=numpy.mean(self.survey.SURVEY_NOISES[nn][1:])
-                #else:
-                #    c[paramsList.index('noise')]=cube[paramsList.index('noise')]
-                self.frealisations[df]=countUtils.calculateI(cube,self.parameters,\
-                family=self.kind,bins=self.fbins[df],area=self.survey.SURVEY_AREAS[nn],\
-                model=self.model,noiseZone=nn)
-            self.dataRealisation=self.frealisations
         else:
             self.dataRealisation=countUtils.calculateI(cube,self.parameters,\
                 family=self.kind,bins=self.bins,area=self.survey.SURVEY_AREA,\
@@ -578,23 +637,50 @@ class countModel(object):
 
     def loglike(self,cube,ndim,nparams):
         # Test the break positions if necessary (Si present in params list)
+        import time
         if not strictly_increasing([cube[i] for i in range(ndim) if \
             (self.parameters[i].startswith('S') and not self.parameters[i].startswith('SL'))]):
             #print [cube[i] for i in range(ndim)]
-            print '+',
+            #print '+',
             return -1.0e99
         else:
             #self.transform(cube,ndim,nparams)
             #print self.currentPhysParams
-            if self.doRedshiftSlices:
-                if not (cube[self.parameters.index('LMIN')]<cube[self.parameters.index('LSTAR')]<cube[self.parameters.index('LMAX')]):
-                    print '+',
+            #if self.doRedshiftSli:
+            if self.kind in [ 'LFlognorm_dpl','LFdpl_pl','LFdpl_dpl']:
+
+               if not (cube[self.parameters.index('LMIN')]< cube[self.parameters.index('LSTAR_2')]<\
+                        cube[self.parameters.index('LMAX2')] and cube[self.parameters.index('LMIN2')]<\
+                        cube[self.parameters.index('LSTAR')]<cube[self.parameters.index('LMAX')]):
+              
                     return -1.0e99
-                else:
+               else:
                     return poissonLhoodMulti2(self.zDataObject,self.realise(cube),\
                                          silent=True)
+
+
+            elif self.kind in ['LFlognorm','LFpl','LFdpl']:          
+                if not (cube[self.parameters.index('LMIN')]< cube[self.parameters.index('LSTAR_2')]<\
+                        cube[self.parameters.index('LMAX')]):               
+                    print '+',#cube[self.parameters.index('LMIN')],cube[self.parameters.index('LSTAR')], 'out of range',
+                    return -1.0e99
+                else:
+                    
+                    #t0 = time.time()
+                    #t_n = 0.
+                    pois = poissonLhoodMulti2(self.zDataObject,self.realise(cube),\
+                                         silent=True)
+                    #t1 = time.time()
+                    #dt=t1-t0
+                    #print pois
+                    #print 'it took %6.4f sec (~ %i min) for the cod to run'%(dt,\
+                    #					int(round(dt/60.0)))
+                    #sys.exit()					
+                    return pois
             elif self.survey.multi:
-                return poissonLhoodMulti3(self.fdata,self.realise(cube),silent=True)
+                return poissonLhoodMulti(self.data,self.realise(cube),\
+                                         silent=True,fractions=self.fractions,\
+                                         redshifts=self.redshifts)
             else:
                return poissonLhood(self.data,self.realise(cube),silent=True)
 
@@ -603,5 +689,5 @@ class countModel(object):
 
 
 #-------------------------------------------------------------------------------
-
+        
     
