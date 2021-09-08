@@ -2,13 +2,11 @@
 
 """
 Execute this code as
-
 mpirun -np 4 ./bayestack.py bayestack_settings.py
-
 """
 
 import os,sys
-import time,shutil,glob,shelve
+import time,shutil,glob
 import importlib
 import pymultinest
 from bayestackClasses import countModel
@@ -24,6 +22,7 @@ except:
     MPI._p_pickle.loads = dill.loads
 
 # Need to change this so it's master only, i.e. incorporate in main()
+'''
 __name_cached=__name__
 if __name__=='__main__':
     param_file=sys.argv[-1]
@@ -31,23 +30,30 @@ if __name__=='__main__':
     set_module=importlib.import_module(settingsf)
     globals().update(set_module.__dict__)
 __name__=__name_cached
+'''
 
+    
 #-------------------------------------------------------------------------------
 
-def main():
+def run():
+    if 'chains' in sys.argv[-1]:
+        potential_settings=glob.glob(os.path.join(sys.argv[-1],'*settings*py'))
+        assert(len(potential_settings)==1), '***More than one potential (or missing) settings file!'
+        settingsf='.'.join([sys.argv[-1],potential_settings[0].split('/')[-1].split('.')[-2]])
+    else:
+        print sys.argv[-1]
+        settingsf=sys.argv[-1].split('.')[-2]
+        param_file=sys.argv[-1]
 
+    print '%s is using %s' % (__name__,settingsf)
+    try:
+        set_module=importlib.import_module(settingsf)
+        globals().update(set_module.__dict__)
+    except:
+        print '***Warning: Settings not loaded'
+    
     settingsf=param_file.split('.')[-2]
-    expt=countModel(modelFamily,nlaws,settingsf,[dataset],floatNoise,\
-                    doPoln=doPoln,doRayleigh=doRayleigh,\
-                    doRedshiftSlices=doRedshiftSlices)
-
-    #print expt.__dict__
-    #print expt.survey.__dict__
-
-    #import bayestackClasses
-    #x=bayestackClasses.dataSetup('sdss',zmanifestf,redshiftSlices=True)
-    #print x
-    #sys.exit(0)
+    expt=countModel(modelFamily,nlaws,settingsf,[dataset],floatNoise,doRedshiftSlices=doRedshiftSlices)
 
     # Set up MPI
     world=MPI.COMM_WORLD
@@ -98,20 +104,19 @@ def main():
     if master:
         variablesf=os.path.join(outdir,variablesfile)
         dump_variable_values(set_module,variablesf,verbose=False)
-        # and shelve them
-        #shelvef=os.path.join(outdir,'shelves.txt')
-        #http://stackoverflow.com/questions/2960864/how-can-i-save-all-the-variables-in-the-current-python-session
-        #my_shelf = shelve.open(shelvef,'n') # 'n' for new
-        #for key in dir():
-        #    try:
-        #        my_shelf[key] = globals()[key]
-        #    except TypeError:
-        #        pass #print('ERROR shelving: {0}'.format(key))
-        #my_shelf.close()
 
         startTime = time.strftime('%X %x %Z')
         shutil.copy(param_file,os.path.join(outdir,'bayestack_settings.py'))
-        shutil.copy(datafile,outdir)
+        if doRedshiftSlices:
+            for datafile in datafiles:
+                shutil.copy(datafile,outdir)
+        else:
+            shutil.copy(datafile,outdir)
+        shutil.copy('bayestackClasses.py',outdir)
+        shutil.copy('bayestack.py',outdir)
+        shutil.copy('lumfuncUtils.py',outdir)
+        shutil.copy('utils.py',outdir)
+
         notes=['Time now is %s' % startTime,\
                'Settings file: %s' % param_file,\
                'Data file: %s' % datafile]
@@ -126,29 +131,32 @@ def main():
         notes=['Bins taken from %s' % datafile,\
                '# Bin occupancies [i uJy uJy field^-1]:']
         remarks(log,notes)
-        notes='nsrc=%i'%expt.nsrc
-        remark(log,notes)
-        if not expt.survey.multi:
-            for ibin in xrange(expt.nbins):
-                try:
-                    line='%i %f %f %f'%(ibin+1,expt.bins[ibin],expt.bins[ibin+1],expt.data[ibin])
-                except IndexError:
-                    print "Probably your binstyle doesn't match the datafile bins"
-                    sys.exit(0)
-                remark(log,line)
+        if doRedshiftSlices:
+         print 'Multi data'
+         for df in expt.survey.datafiles[0]:
+            print df
+            for ibin in xrange(expt.fnbins[df]):
+             try:
+                line='%i %f %f %f'%(ibin+1,expt.fbins[df][ibin],expt.fbins[df][ibin+1],expt.fdata[df][ibin])
+             except IndexError:
+                print "Probably your binstyle doesn't match the datafile bins"
+                sys.exit(0)
+             remark(log,line)
+
         else:
-            for df in expt.survey.datafiles:
-                for ibin in xrange(expt.fnbins[df]):
-                    try:
-                        line='%i %f %f %f' % (ibin+1,expt.fbins[df][ibin],expt.fbins[df][ibin+1],expt.fdata[df][ibin])
-                    except IndexError:
-                        print "Probably your binstyle doesn't match the datafile bins"
-                        sys.exit(0)
-                    remark(log,line)
+            for ibin in xrange(expt.nbins):
+             try:
+                line='%i %f %f %f'%(ibin+1,expt.bins[ibin],expt.bins[ibin+1],expt.data[ibin])
+             except IndexError:
+                print "Probably your binstyle doesn't match the datafile bins"
+                sys.exit(0)
+             remark(log,line)
 
 
     # Run MultiNest
-    if master: t0 = time.time()
+    if master:
+       t0 = time.time()
+       print outdir
     try:
         pymultinest.run(expt.loglike,expt.logprior,expt.nparams,\
                     resume=RESUME,verbose=True,\
@@ -157,15 +165,15 @@ def main():
                     evidence_tolerance=evidence_tolerance,\
                     # mode_tolerance=-1e90 bugfix for earlier versions
                     # of PyMultiNest
-                    sampling_efficiency=sampling_efficiency,\
                     mode_tolerance=-1e90,seed=SEED_SAMP,max_iter=max_iter,\
                     importance_nested_sampling=do_INS,\
+		    sampling_efficiency=sampling_efficiency,\
                     outputfiles_basename=os.path.join(outdir,outstem),\
         # NB MPI is already init'ed by mpi4py (crashes otherwise)
                     init_MPI=False)
-    except Exception as e:
-	print e
-        return 1
+    except  Exception as e:
+	    print e
+	    return 1
 
     if master:
         stopTime=time.strftime('%X %x %Z')
@@ -177,9 +185,10 @@ def main():
         
         notes=['Time then was %s' % startTime,\
                'Time now is %s' % stopTime,\
-               'Execution took %6.4f sec (~ %i min) with %i cores' % \
-                                         (dt,int(round(dt/60.0)),size),\
-               'Arguments: %s' % ' '.join(sys.argv),\
+               'Execution took %6.4f sec (~ %i hours %i min) with %i cores' % \
+                                         (dt,divmod(dt,3600)[0],int(divmod(dt,3600)[1]/60),size),\
+               'Arguments:  %s' % ' '.join(sys.argv),\
+               'Model used: %s'%modelFamily,\
                'INS   = %s' % do_INS,\
                'nlive = %i' % n_live_points,\
                'Run comment: %s' % comment,\
@@ -206,9 +215,3 @@ def main():
     return 0
 
 #-------------------------------------------------------------------------------
-
-if __name__ == '__main__':
-
-    ret=main()
-    sys.exit(ret)
-
