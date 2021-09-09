@@ -43,3 +43,8 @@ Contributors:
 
 
 Proudly powered by MultiNest (Farhan Feroz and Mike Hobson) and PyMultinest (Johannes Buchner)
+
+How to use code
+> Use binner.py or splitter.py to format the flux densities into a form compatable with bayestack
+> edit or create the bayestack_setting.py to update contants, priors, model to be used, multinest parmaters etc.
+> run the code by either importing it into your own main file or by using the handdler ./run_bayestack.py bayestack_settings.py 
