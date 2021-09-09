@@ -209,15 +209,30 @@ class countModel(object):
                      ('limits',['S%i'%ic for ic in xrange(2)]),\
                      ('poles',['b%i'%ic for ic in xrange(self.nlaws)]),\
                      ('slopes',['a%i'%ic for ic in xrange(self.nlaws)]),\
+                     ('evol',['A_agn','A_SF','B_agn','B_SF']),\
+		                 ('evol_el',['A_SF','A_agn']),\
                      ('schechter',['LMIN','LMAX','LNORM','LSTAR','LSLOPE','LZEVOL']),\
                      ('doublepl',['LMIN','LMAX','LNORM','LSTAR','LSLOPE','LSLOPE2','LZEVOL']),\
+                     ('dpl_dpl',['LMIN','LMAX2','LMIN2','LMAX','LNORM','LSTAR','LSLOPE','LSLOPE2','LNORM_2','LSTAR_2','LSLOPE_2','LSLOPE2_2']),\
                      ('schechterM',['MMIN','MMAX','MNORM','MSTAR','MSLOPE','MZEVOL']),\
+                     ('lognorm',['LMIN','LMAX','LNORM_2','LSTAR_2','LSLOPE_2','LSIGMA']),\
+                     ('lognorm_dpl',['LMIN','LMAX2','LMIN2','LMAX','LNORM','LSTAR','LSLOPE','LSLOPE2','LNORM_2','LSTAR_2','LSLOPE_2','LSIGMA']),\
+		                 ('lognorm_lognorm_dpl',['LMIN','LMAX2','LMIN2','LMAX','LNORM','LSTAR','LSLOPE','LSLOPE2','LNORM_2','LSTAR_2','LSLOPE_2','LNORM_3','LSTAR_3','LSLOPE_3']),\
+
                      ('doubleplM',['MMIN','MMAX','MNORM','MSTAR','MSLOPE','MSLOPE2','MZEVOL'])])
         familyMap={'ppl':['breaks','slopes','amp','extra'],\
                    'poly':['limits','coeffs','extra'],\
                    'bins':['poles','extra'],\
                    'LFsch':['schechter','extra'],\
                    'LFdpl':['doublepl','extra'],\
+                   'LFdpl':['doublepl','extra'],\
+                   'LFdpl_dpl':['dpl_dpl','extra'],\
+                   'LFevol_logn':['evol','llimits','extra'],\
+		               'LFevol_logn_L':['Llimits','evol','llimits','extra'],
+        		       'LFevol_logn_el':['evol_el','llimits','extra'],\
+                   'LFlognorm_dpl':['lognorm_dpl','extra'],\
+        		       'LFlognorm_lognorm_dpl':['lognorm_lognorm_dpl','extra'],\
+                   'LFlognorm':['lognorm','extra'],\
                    'HIsch':['schechterM','extra'],\
                    'HIdpl':['doubleplM','extra']}
         self.paramsStruct=\
