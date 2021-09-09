@@ -343,7 +343,10 @@ def dNdS_LF(S, z, dlds, Vmax, dl, params=None, paramsList=None, family=None):
     return LFtodnds(L*(1.4/3.)**(0.7),phi,dlds,Vmax,dl)
    
 def LF(S, z, dlds, Vmax, dl, params=None, paramsList=None, family=None,L=None):
-
+    '''
+    Calculates the LF given the model, parameters and redshift.
+    '''
+    #setting up the params
     Lmin=params[paramsList.index('LMIN')]
     Lmax=params[paramsList.index('LMAX')]
     if family in ['LFsch','LFdpl_dpl','LFlognorm_dpl','LFlognorm_lognorm_dpl']:
@@ -362,12 +365,10 @@ def LF(S, z, dlds, Vmax, dl, params=None, paramsList=None, family=None,L=None):
         Lstar_3=params[paramsList.index('LSTAR_3')]
         Lslope_3=params[paramsList.index('LSLOPE_3')]
 
-
     if family in ['LFlognorm_dpl','LFlognorm_lognorm_dpl','LFdpl_dpl']:
         Lmin2=params[paramsList.index('LMIN2')]
         Lmax2=params[paramsList.index('LMAX2')]
         Lmin2,Lmax2 =numpy.power(10,[Lmin2,Lmax2])
-
 
     if family in ['LFdpl', 'LFdpl_dpl']:
         Lslope2_2=params[paramsList.index('LSLOPE2_2')]
@@ -446,7 +447,7 @@ def LF(S, z, dlds, Vmax, dl, params=None, paramsList=None, family=None,L=None):
 
                         phi = phi_1+phi_2
 	   
-	        elif family=='LFevol_logn_el':
+	    elif family=='LFevol_logn_el':
 	            #Model C indivi
                 L_1 = L/(1+z)**(alpha_agn)
                 L_2 = L/(1+z)**(alpha_SF)
@@ -477,7 +478,6 @@ def LF(S, z, dlds, Vmax, dl, params=None, paramsList=None, family=None,L=None):
                 if Lmin<L<Lmax2:
                     phi_2=lognormpl(L,Lstar_2,Lslope_2,Lsigma,Lnorm_2)
                 phi = phi_1+phi_2
-
 
             return phi
     else:
@@ -512,9 +512,7 @@ def IL(dNdS_LF,redshift,dlds,Vmax,dl,params,paramsList,Sbinlow,Sbinhigh,\
     #         family=family)*erfss(S,Sbinlow,Sbinhigh,sigma/1.0e6),\
     #                                    Smin,Smax,epsabs=1.49e-10, epsrel=1.49e-10,limit=600)[0]
 
-    #intt = mpmath.quad(lambda S:dNdS_LF(S,redshift,dlds,Vmax,dl,params=params,paramsList=paramsList,\
-    #         ,family=family)[0]*erfss(S,Sbinlow/1.0e6,Sbinhigh/1.0e6,sigma/1.0e6),\
-    #                                    [Smin,Smax])
+    #I am intergrating in log space as it much faster. I've ran a may tests and varified that the two approaches give the same results.
     intt = integrate.quad(lambda x:dNdS_LF(exp(x),redshift,dlds,Vmax,dl,params=params,paramsList=paramsList,\
              family=family)*erfss(exp(x),Sbinlow,Sbinhigh,sigma/1.0e6)*exp(x),\
                                         log(Smin),log(Smax))[0]
