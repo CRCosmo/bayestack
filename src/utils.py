@@ -139,9 +139,14 @@ def poissonLhoodMulti2(dataObject,realisationObject,silent=True):
         if not silent:
             for i in range(len(data)):
                 print i,data[i],realisation[i]
-        kk=data[numpy.where(realisation > 0)];
-        iii=realisation[numpy.where(realisation > 0)]
-        loglike += (kk*numpy.log(iii) + kk - kk*numpy.log(kk) - iii).sum()
+        for i in range(len(data)):
+            kk=data[i]
+            iii=realisation[i]+1e-10 
+            fact=float(numpy.math.factorial(kk))
+            if kk<25: #approximation not realiable with low kk
+                loglike += (kk*numpy.log(iii) - numpy.log(fact) - iii)
+            else: #use Sterling aproximation for log(kk!)    
+                loglike += (kk*numpy.log(iii) + kk - (kk + 0.5)*numpy.log(kk) - 0.5*numpy.log(2*numpy.pi)  - iii)
     return loglike
 
 #-------------------------------------------------------------------------------
