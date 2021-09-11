@@ -503,9 +503,6 @@ def IL(dNdS_LF,redshift,dlds,Vmax,dl,params,paramsList,Sbinlow,Sbinhigh,\
         if num>0:
           Lmin=10**params[paramsList.index('LMIN_%d'%num)]
     [Smin,Smax]=get_sbins([Lmin,Lmax],redshift,dl)
-    if not floatNoise:
-    	sigma = NOISE
-
 
     #print redshift,dl,Sbinlow,Sbinhigh,Lmin,Lmax,Smin,Smax
     #intt = integrate.quad(lambda S:dNdS_LF(S,redshift,dlds,Vmax,dl,params=params,paramsList=paramsList,\
